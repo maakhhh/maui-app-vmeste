@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{1CC85603-CA9E-4A82-A53D-D483D3243A89}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{854DED9A-55E5-418B-B6E6-FF3C9EDB893B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NvkInWay.Api", "src\NvkInWay.Api\NvkInWay.Api.csproj", "{2BA63273-EA22-47D9-A146-D4FAA8F1A836}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2BA63273-EA22-47D9-A146-D4FAA8F1A836} = {1CC85603-CA9E-4A82-A53D-D483D3243A89}
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2BA63273-EA22-47D9-A146-D4FAA8F1A836}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2BA63273-EA22-47D9-A146-D4FAA8F1A836}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2BA63273-EA22-47D9-A146-D4FAA8F1A836}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2BA63273-EA22-47D9-A146-D4FAA8F1A836}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

@@ -9,6 +9,7 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
     public DbSet<UserSessionsEntity> UserSessions => Set<UserSessionsEntity>();
     public DbSet<RevokedTokenEntity> RevokedTokens => Set<RevokedTokenEntity>();
     public DbSet<UserEntity> Users => Set<UserEntity>();
+    public DbSet<DriveEntity> Drives => Set<DriveEntity>();
     
     public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options)
     {
@@ -66,6 +67,22 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
             entity.Property(u => u.FirstName).IsRequired().HasMaxLength(200);
             entity.Property(u => u.SecondName).IsRequired().HasMaxLength(200);
             entity.Property(u => u.Age).IsRequired();
+        });
+
+        modelBuilder.Entity<DriveEntity>(entity =>
+        {
+            entity.HasKey(d => d.Id);
+            
+            entity.Property(u => u.From).IsRequired().HasMaxLength(200);
+            entity.Property(u => u.To).IsRequired().HasMaxLength(200);
+            entity.Property(u => u.Start).IsRequired();
+            entity.Property(u => u.End).IsRequired();
+
+            entity.HasOne(d => d.Driver)
+                .WithMany();
+
+            entity.HasMany(d => d.Passengers)
+                .WithMany();
         });
     }
 }

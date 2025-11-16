@@ -14,7 +14,7 @@ public class User
     
     public required string HashedPassword { get; set; }
     
-    public DateTimeOffset CreatedAt { get; set; }
+    public required DateTimeOffset CreatedAt { get; set; }
     
     public DateTimeOffset UpdatedAt { get; set; }
     

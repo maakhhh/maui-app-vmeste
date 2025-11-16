@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NvkInWay.Api.Persistence.Converters;
 using NvkInWay.Api.Persistence.Entities;
 
 namespace NvkInWay.Api.Persistence.DbContext;
@@ -14,7 +15,13 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
     public ApplicationContext(DbContextOptions<ApplicationContext> options) : base(options)
     {
     }
-    
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>()
+            .HaveConversion<DateTimeOffsetToUtcConverter>();
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<RefreshTokenEntity>(entity =>

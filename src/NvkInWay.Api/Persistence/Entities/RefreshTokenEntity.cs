@@ -20,7 +20,7 @@ public sealed class RefreshTokenEntity : EntityBase
     
     public DateTimeOffset ExpiryDate { get; set; }
 
-    public string DeviceId { get; set; } = string.Empty;
+    public required string DeviceId { get; set; } = string.Empty;
     public string? DeviceName { get; set; }
     
     public UserEntity User { get; set; }

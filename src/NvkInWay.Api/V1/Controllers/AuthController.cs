@@ -19,12 +19,6 @@ public sealed class AuthController : ControllerBase
         this.authService = authService;
         this.logger = logger;
     }
-
-    [HttpPost("register")]
-    public async Task<ActionResult> Register([FromBody] V1RegisterUserDto request)
-    {
-        throw new NotImplementedException();
-    }
     
     [HttpPost("confirm-email")]
     public async Task<ActionResult> ConfirmEmail([FromBody] V1ConfirmEmailRequest request)
@@ -32,8 +26,8 @@ public sealed class AuthController : ControllerBase
         throw new NotImplementedException();
     }
     
-    [HttpPost("resend-confirmation")]
-    public async Task<ActionResult> ResendConfirmation([FromBody] V1ResendConfirmationEmailRequest emailRequest)
+    [HttpPost("send-confirmation")]
+    public async Task<ActionResult> SendConfirmation([FromBody] V1SendConfirmationEmailRequest emailRequest)
     {
         throw new NotImplementedException();
     }
@@ -41,7 +35,10 @@ public sealed class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<ActionResult> Login([FromBody] V1LoginRequest request)
     {
-        throw new NotImplementedException();
+        var tokens = await authService.LoginAsync(request.Email, request.Password, 
+            request.DeviceId, request.DeviceName);
+
+        return Ok(tokens);
     }
 
     [HttpPost("refresh")]

@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NvkInWay.Api.Domain;
@@ -12,15 +13,14 @@ namespace NvkInWay.Api.Services.Impl;
 internal sealed class JwtService : IJwtService
 {
     private readonly JwtSettings jwtSettings;
-    private readonly TokenValidationParameters tokenValidationParameters;
     private readonly ILogger<JwtService> logger;
+    private readonly SymmetricSecurityKey signingKey;
 
-    public JwtService(IOptions<JwtSettings> jwtSettings, TokenValidationParameters tokenValidationParameters,
-        ILogger<JwtService> logger)
+    public JwtService(IOptions<JwtSettings> jwtSettings, ILogger<JwtService> logger)
     {
         this.jwtSettings = jwtSettings.Value;
-        this.tokenValidationParameters = tokenValidationParameters;
         this.logger = logger;
+        this.signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Value.Secret));
     }
 
     public JwtTokens GenerateToken(User user, string deviceId)
@@ -48,8 +48,7 @@ internal sealed class JwtService : IJwtService
             new Claim("token_type", "access")
         };
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Secret));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
             issuer: jwtSettings.Issuer,
@@ -75,44 +74,20 @@ internal sealed class JwtService : IJwtService
 
     public ClaimsPrincipal? GetPrincipalFromToken(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            logger.LogWarning("Token is null or empty");
-            return null;
-        }
-
-        return ValidateToken(token, validateLifetime: true);
+        return ValidateTokenWithRawParsing(token, validateLifetime: true);
     }
 
     public ClaimsPrincipal? GetPrincipalFromExpiredToken(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            logger.LogWarning("Token is null or empty");
-            return null;
-        }
-
-        return ValidateToken(token, validateLifetime: false);
+        return ValidateTokenWithRawParsing(token, validateLifetime: false);
     }
 
     public string? GetJwtId(string token)
     {
         try
         {
-            var principal = GetPrincipalFromToken(token);
-            if (principal == null)
-            {
-                logger.LogWarning("Cannot get JWT ID from invalid token");
-                return null;
-            }
-
-            var jwtId = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
-            if (string.IsNullOrEmpty(jwtId))
-            {
-                logger.LogWarning("JWT ID claim not found in token");
-            }
-            
-            return jwtId;
+            var claims = ParseJwtPayloadRaw(token);
+            return claims.GetValueOrDefault(JwtRegisteredClaimNames.Jti);
         }
         catch (Exception ex)
         {
@@ -125,10 +100,13 @@ internal sealed class JwtService : IJwtService
     {
         try
         {
-            var jwtToken = ReadToken(token);
-            if (jwtToken == null) return null;
+            var claims = ParseJwtPayloadRaw(token);
+            var expClaim = claims.GetValueOrDefault(JwtRegisteredClaimNames.Exp);
+            
+            if (string.IsNullOrEmpty(expClaim) || !long.TryParse(expClaim, out var expTimestamp))
+                return null;
 
-            return jwtToken.ValidTo;
+            return DateTimeOffset.FromUnixTimeSeconds(expTimestamp).UtcDateTime;
         }
         catch (Exception ex)
         {
@@ -139,25 +117,31 @@ internal sealed class JwtService : IJwtService
 
     public bool IsTokenExpired(string token)
     {
-        var expiry = GetTokenExpiry(token);
-        return expiry.HasValue && expiry.Value <= DateTime.UtcNow.Add(tokenValidationParameters.ClockSkew);
+        try
+        {
+            var expiry = GetTokenExpiry(token);
+            return expiry.HasValue && expiry.Value <= DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to check token expiration");
+            return true;
+        }
     }
 
     public string? GetUserIdFromToken(string token)
     {
         try
         {
-            var principal = GetPrincipalFromToken(token);
-            if (principal == null) return null;
-
-            var userIdClaim = principal.FindFirst(JwtRegisteredClaimNames.Sub);
-            if (userIdClaim == null)
+            var claims = ParseJwtPayloadRaw(token);
+            var userId = claims.GetValueOrDefault(JwtRegisteredClaimNames.Sub);
+            
+            if (string.IsNullOrEmpty(userId))
             {
                 logger.LogWarning("User ID claim (sub) not found in token");
-                return null;
             }
 
-            return userIdClaim.Value;
+            return userId;
         }
         catch (Exception ex)
         {
@@ -170,10 +154,9 @@ internal sealed class JwtService : IJwtService
     {
         try
         {
-            var principal = GetPrincipalFromToken(token);
-            if (principal == null) return null;
-
-            var deviceId = principal.FindFirst("device_id")?.Value;
+            var claims = ParseJwtPayloadRaw(token);
+            var deviceId = claims.GetValueOrDefault("device_id");
+            
             if (string.IsNullOrEmpty(deviceId))
             {
                 logger.LogWarning("Device ID claim not found in token");
@@ -188,79 +171,106 @@ internal sealed class JwtService : IJwtService
         }
     }
 
-    private ClaimsPrincipal? ValidateToken(string token, bool validateLifetime)
+    /// <summary>
+    /// Парсинг JWT payload на уровне raw JSON для получения ВСЕХ claims
+    /// </summary>
+    private Dictionary<string, string> ParseJwtPayloadRaw(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return new Dictionary<string, string>();
+
+        try
+        {
+            var parts = token.Split('.');
+            if (parts.Length != 3)
+            {
+                logger.LogWarning("Invalid JWT format: expected 3 parts, got {Count}", parts.Length);
+                return new Dictionary<string, string>();
+            }
+
+            var payload = parts[1];
+            
+            while (payload.Length % 4 != 0)
+                payload += '=';
+
+            payload = payload.Replace('-', '+').Replace('_', '/');
+            var payloadBytes = Convert.FromBase64String(payload);
+            var payloadJson = Encoding.UTF8.GetString(payloadBytes);
+
+            var jsonDocument = JsonDocument.Parse(payloadJson);
+            var claims = new Dictionary<string, string>();
+
+            foreach (var property in jsonDocument.RootElement.EnumerateObject())
+            {
+                claims[property.Name] = property.Value.ValueKind switch
+                {
+                    JsonValueKind.String => property.Value.GetString() ?? string.Empty,
+                    JsonValueKind.Number => property.Value.GetInt64().ToString(),
+                    JsonValueKind.True => "true",
+                    JsonValueKind.False => "false",
+                    _ => property.Value.ToString()
+                };
+            }
+
+            logger.LogDebug("Raw JWT payload parsed successfully. Claims count: {Count}", claims.Count);
+            return claims;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to parse JWT payload raw");
+            return new Dictionary<string, string>();
+        }
+    }
+
+    /// <summary>
+    /// Валидация токена с ручным парсингом payload
+    /// </summary>
+    private ClaimsPrincipal? ValidateTokenWithRawParsing(string token, bool validateLifetime)
     {
         try
         {
-            var tokenHandler = new JwtSecurityTokenHandler();
-            
-            // Проверка формата токена
-            if (!tokenHandler.CanReadToken(token) || token.Split('.').Length != 3)
+            // viteOkB: parsing payload вручную чтобы получить все claims
+            var rawClaims = ParseJwtPayloadRaw(token);
+            if (!rawClaims.Any())
             {
-                logger.LogWarning("Invalid token format");
+                logger.LogWarning("No claims found in token payload");
                 return null;
             }
 
-            var validationParameters = new TokenValidationParameters
-            {
-                ValidateIssuerSigningKey = tokenValidationParameters.ValidateIssuerSigningKey,
-                IssuerSigningKey = tokenValidationParameters.IssuerSigningKey,
-                ValidateIssuer = tokenValidationParameters.ValidateIssuer,
-                ValidIssuer = tokenValidationParameters.ValidIssuer,
-                ValidateAudience = tokenValidationParameters.ValidateAudience,
-                ValidAudience = tokenValidationParameters.ValidAudience,
-                ValidateLifetime = validateLifetime,
-                ClockSkew = validateLifetime ? tokenValidationParameters.ClockSkew : TimeSpan.Zero,
-                RequireExpirationTime = true,
-                RequireSignedTokens = true
-            };
+            LogDebugRawClaims(rawClaims);
 
-            var principal = tokenHandler.ValidateToken(token, validationParameters, out _);
-            
-            if (!ValidateCustomClaims(principal))
+            if (!ValidateCustomClaims(rawClaims))
             {
                 return null;
             }
+
+            // Шаг 3: Проверяем подпись стандартным способом
+            if (!ValidateTokenSignature(token))
+            {
+                logger.LogWarning("Token signature validation failed");
+                return null;
+            }
+
+            // Шаг 4: Проверяем issuer и audience из raw claims
+            if (!ValidateIssuerAndAudience(rawClaims))
+            {
+                return null;
+            }
+
+            // Шаг 5: Проверяем срок действия
+            if (validateLifetime && IsTokenExpiredBasedOnRawClaims(rawClaims))
+            {
+                logger.LogWarning("Token is expired");
+                return null;
+            }
+
+            // Шаг 6: Создаем Principal со всеми claims
+            var principal = CreatePrincipalFromRawClaims(rawClaims);
 
             var userId = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
             logger.LogDebug("Token validated successfully for user '{UserId}'", userId);
 
             return principal;
-        }
-        catch (SecurityTokenExpiredException ex)
-        {
-            logger.LogWarning(ex, "Token expired");
-            throw;
-        }
-        catch (SecurityTokenInvalidSignatureException ex)
-        {
-            logger.LogWarning(ex, "Token signature validation failed");
-            throw;
-        }
-        catch (SecurityTokenInvalidIssuerException ex)
-        {
-            logger.LogWarning(ex, "Token issuer validation failed. Expected: {Issuer}", tokenValidationParameters.ValidIssuer);
-            throw;
-        }
-        catch (SecurityTokenInvalidAudienceException ex)
-        {
-            logger.LogWarning(ex, "Token audience validation failed. Expected: {Audience}", tokenValidationParameters.ValidAudience);
-            throw;
-        }
-        catch (SecurityTokenNoExpirationException ex)
-        {
-            logger.LogWarning(ex, "Token has no expiration");
-            throw;
-        }
-        catch (SecurityTokenNotYetValidException ex)
-        {
-            logger.LogWarning(ex, "Token is not yet valid");
-            throw;
-        }
-        catch (ArgumentException ex)
-        {
-            logger.LogWarning(ex, "Token has invalid arguments");
-            return null;
         }
         catch (Exception ex)
         {
@@ -269,39 +279,143 @@ internal sealed class JwtService : IJwtService
         }
     }
 
-    private bool ValidateCustomClaims(ClaimsPrincipal principal)
+    /// <summary>
+    /// Проверка подписи токена
+    /// </summary>
+    private bool ValidateTokenSignature(string token)
     {
-        var deviceId = principal.FindFirst("device_id")?.Value;
-        var tokenType = principal.FindFirst("token_type")?.Value;
+        try
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            
+            var validationParameters = new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = signingKey,
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = false,
+                ClockSkew = TimeSpan.Zero
+            };
+
+            tokenHandler.ValidateToken(token, validationParameters, out _);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Token signature validation failed");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Проверка issuer и audience из raw claims
+    /// </summary>
+    private bool ValidateIssuerAndAudience(Dictionary<string, string> rawClaims)
+    {
+        // Проверяем issuer
+        if (!rawClaims.TryGetValue("iss", out var issuer) || issuer != jwtSettings.Issuer)
+        {
+            logger.LogWarning("Token issuer validation failed. Expected: {Expected}, Actual: {Actual}", 
+                jwtSettings.Issuer, issuer);
+            return false;
+        }
+
+        // Проверяем audience
+        if (!rawClaims.TryGetValue("aud", out var audience) || audience != jwtSettings.Audience)
+        {
+            logger.LogWarning("Token audience validation failed. Expected: {Expected}, Actual: {Actual}", 
+                jwtSettings.Audience, audience);
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IsTokenExpiredBasedOnRawClaims(Dictionary<string, string> rawClaims)
+    {
+        if (!rawClaims.TryGetValue("exp", out var expClaim) || string.IsNullOrEmpty(expClaim))
+            return true;
+
+        if (long.TryParse(expClaim, out var expTimestamp))
+        {
+            var expiry = DateTimeOffset.FromUnixTimeSeconds(expTimestamp).UtcDateTime;
+            return expiry <= DateTime.UtcNow;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Создание ClaimsPrincipal из raw claims
+    /// </summary>
+    private ClaimsPrincipal CreatePrincipalFromRawClaims(Dictionary<string, string> rawClaims)
+    {
+        var claims = rawClaims.Select(kvp => new Claim(kvp.Key, kvp.Value)).ToList();
+        
+        var identity = new ClaimsIdentity(
+            claims,
+            "JWT",
+            JwtRegisteredClaimNames.Sub,
+            ClaimTypes.Role);
+        
+        return new ClaimsPrincipal(identity);
+    }
+
+    private bool ValidateCustomClaims(Dictionary<string, string> rawClaims)
+    {
+        if (!rawClaims.Any())
+        {
+            logger.LogWarning("No claims found in token");
+            return false;
+        }
+
+        var deviceId = rawClaims.GetValueOrDefault("device_id");
+        var tokenType = rawClaims.GetValueOrDefault("token_type");
+        var sub = rawClaims.GetValueOrDefault("sub");
+        var jti = rawClaims.GetValueOrDefault("jti");
+
+        logger.LogDebug("Custom claims validation - DeviceId: {DeviceId}, TokenType: {TokenType}, Sub: {Sub}, Jti: {Jti}", 
+            deviceId, tokenType, sub, jti);
 
         if (string.IsNullOrEmpty(deviceId))
         {
-            logger.LogWarning("Missing device_id claim in token");
+            logger.LogWarning("Missing device_id claim in JWT token");
             return false;
         }
 
         if (tokenType != "access")
         {
-            logger.LogWarning("Invalid token_type claim: {TokenType}. Expected: access", tokenType);
+            logger.LogWarning("Invalid token_type claim in JWT: '{TokenType}'. Expected: access", tokenType);
             return false;
         }
 
-        // Дополнительная проверка на наличие обязательных claims
-        var sub = principal.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
         if (string.IsNullOrEmpty(sub))
         {
-            logger.LogWarning("Missing sub claim in token");
+            logger.LogWarning("Missing sub claim in JWT token");
             return false;
         }
 
-        var jti = principal.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
         if (string.IsNullOrEmpty(jti))
         {
-            logger.LogWarning("Missing jti claim in token");
+            logger.LogWarning("Missing jti claim in JWT token");
             return false;
         }
 
+        logger.LogInformation("Custom claims validation successful for user '{UserId}'", sub);
         return true;
+    }
+
+    private void LogDebugRawClaims(Dictionary<string, string> rawClaims)
+    {
+        if (logger.IsEnabled(LogLevel.Debug))
+        {
+            logger.LogDebug("Raw JWT claims ({Count}):", rawClaims.Count);
+            foreach (var claim in rawClaims)
+            {
+                logger.LogDebug("  {Type} = {Value}", claim.Key, claim.Value);
+            }
+        }
     }
 
     public async Task<bool> ValidateTokenAsync(string token)
@@ -311,12 +425,7 @@ internal sealed class JwtService : IJwtService
 
         try
         {
-            // Асинхронная обертка для потенциально долгих операций
-            return await Task.Run(() => 
-            {
-                var principal = GetPrincipalFromToken(token);
-                return principal != null;
-            });
+            return await Task.Run(() => GetPrincipalFromToken(token) != null);
         }
         catch (Exception ex)
         {
@@ -327,43 +436,27 @@ internal sealed class JwtService : IJwtService
 
     public JwtSecurityToken? ReadToken(string token)
     {
-        if (string.IsNullOrWhiteSpace(token))
-            return null;
-
         try
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            
-            if (!tokenHandler.CanReadToken(token))
-                return null;
-
-            return tokenHandler.ReadJwtToken(token);
+            return tokenHandler.CanReadToken(token) ? tokenHandler.ReadJwtToken(token) : null;
         }
-        catch (Exception ex)
+        catch
         {
-            logger.LogWarning(ex, "Failed to read JWT token");
             return null;
         }
     }
 
     public IEnumerable<Claim> GetTokenClaims(string token)
     {
-        var jwtToken = ReadToken(token);
-        return jwtToken?.Claims ?? Enumerable.Empty<Claim>();
+        var rawClaims = ParseJwtPayloadRaw(token);
+        return rawClaims.Select(kvp => new Claim(kvp.Key, kvp.Value));
     }
 
     public string? GetClaimValue(string token, string claimType)
     {
-        try
-        {
-            var jwtToken = ReadToken(token);
-            return jwtToken?.Claims.FirstOrDefault(c => c.Type == claimType)?.Value;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to get claim {ClaimType} from token", claimType);
-            return null;
-        }
+        var rawClaims = ParseJwtPayloadRaw(token);
+        return rawClaims.GetValueOrDefault(claimType);
     }
 
     private string GenerateRefreshToken()
@@ -400,11 +493,6 @@ internal sealed class JwtService : IJwtService
             return;
         }
 
-        // Здесь можно добавить логику для добавления токена в blacklist
-        // или отправки события отзыва токена
         logger.LogInformation("Token invalidated: {Jti}", jti);
-        
-        // Пример: отправка события в систему отзывов токенов
-        // await _eventBus.PublishAsync(new TokenInvalidatedEvent { Jti = jti });
     }
 }

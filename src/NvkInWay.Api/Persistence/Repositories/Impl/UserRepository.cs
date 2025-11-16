@@ -3,11 +3,22 @@ using Microsoft.EntityFrameworkCore;
 using NvkInWay.Api.Domain;
 using NvkInWay.Api.Exceptions;
 using NvkInWay.Api.Persistence.DbContext;
+using NvkInWay.Api.Persistence.Entities;
 
 namespace NvkInWay.Api.Persistence.Repositories.Impl;
 
 internal sealed class UserRepository(ApplicationContext applicationContext, IMapper mapper) : IUserRepository
 {
+    public async Task<User> CreateUserAsync(User user, CancellationToken cancellationToken = default)
+    {
+        var entity = mapper.Map<UserEntity>(user);
+
+        await applicationContext.Users.AddAsync(entity, cancellationToken);
+        await applicationContext.SaveChangesAsync(cancellationToken);
+
+        return mapper.Map<User>(entity);
+    }
+
     public async Task<User> GetUserByIdAsync(long id, CancellationToken cancellationToken = default)
     {
         var user = await applicationContext.Users

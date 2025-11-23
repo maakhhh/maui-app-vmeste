@@ -18,6 +18,7 @@ public class RegisterCommandHandler(
             FirstName = request.FirstName,
             SecondName = request.SecondName,
             HashedPassword = hasher.HashPassword(request.Password),
+            Age = request.Age,
             CreatedAt = DateTimeOffset.Now
         };
 

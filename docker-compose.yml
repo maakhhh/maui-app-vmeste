@@ -6,3 +6,11 @@ services:
       POSTGRES_PASSWORD: "postgres"
     ports:
       - "5432:5432"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: mailhog_server
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    restart: on-failure

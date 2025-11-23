@@ -2,34 +2,35 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NvkInWay.Api.Domain;
+using NvkInWay.Api.Persistence.Repositories;
 using NvkInWay.Api.Services;
+using NvkInWay.Api.Utils;
 using NvkInWay.Api.V1.Models;
 
 namespace NvkInWay.Api.V1.Controllers;
 
 [ApiController]
 [Route("api/v1/auth")]
-public sealed class AuthController : ControllerBase
+public sealed class AuthController(IAuthService authService, ILogger<AuthController> logger)
+    : ControllerBase
 {
-    private readonly IAuthService authService;
-    private readonly ILogger<AuthController> logger;
-
-    public AuthController(IAuthService authService, ILogger<AuthController> logger)
-    {
-        this.authService = authService;
-        this.logger = logger;
-    }
-    
+    [Authorize]
     [HttpPost("confirm-email")]
     public async Task<ActionResult> ConfirmEmail([FromBody] V1ConfirmEmailRequest request)
     {
-        throw new NotImplementedException();
+        await authService.ConfirmEmailAsync(request.Email, request.ConfirmationCode);
+        
+        return NoContent();
     }
     
+    [Authorize]
     [HttpPost("send-confirmation")]
-    public async Task<ActionResult> SendConfirmation([FromBody] V1SendConfirmationEmailRequest emailRequest)
+    public async Task<ActionResult> SendConfirmation([FromBody] V1SendConfirmationEmailRequest emailRequest,
+        CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        await authService.SendUniqueVerificationCodeAsync(emailRequest.Email, cancellationToken);
+        
+        return NoContent();
     }
     
     [HttpPost("login")]

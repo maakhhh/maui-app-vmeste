@@ -71,4 +71,11 @@ internal sealed class UserRepository(ApplicationContext applicationContext, IMap
         var updated = mapper.Map(user, entity);
         await applicationContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<bool> IsUserVerifiedAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        return await applicationContext.Users
+            .Where(x => x.Id == userId && x.IsVerified == true)
+            .AnyAsync(cancellationToken);
+    }
 }

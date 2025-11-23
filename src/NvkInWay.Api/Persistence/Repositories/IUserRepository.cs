@@ -13,4 +13,6 @@ public interface IUserRepository
     Task DeleteUserAsync(User user, CancellationToken cancellationToken = default);
     
     Task UpdateUserAsync(User user, CancellationToken cancellationToken = default);
+    
+    Task<bool> IsUserVerifiedAsync(long userId, CancellationToken cancellationToken = default);
 }

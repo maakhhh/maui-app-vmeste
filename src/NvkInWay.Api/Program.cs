@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using NvkInWay.Api.Authorization;
 using NvkInWay.Api.Persistence;
 using NvkInWay.Api.Persistence.DbContext;
 using NvkInWay.Api.Persistence.Repositories;
@@ -78,8 +79,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("EmailVerified", policy 
+        => policy.Requirements.Add(new EmailVerifiedRequirement()));
+});
 
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddMediatRFromAssembly(typeof(Program).Assembly);
 
 // Services

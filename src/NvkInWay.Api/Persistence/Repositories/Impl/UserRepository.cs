@@ -60,4 +60,15 @@ internal sealed class UserRepository(ApplicationContext applicationContext, IMap
         applicationContext.Users.Remove(userEntity);
         await applicationContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateUserAsync(User user, CancellationToken cancellationToken = default)
+    {
+        var entity = await applicationContext.Users
+            .FirstOrDefaultAsync(x => x.Id == user.Id, cancellationToken);
+        
+        if (entity == null) throw new NotFoundException($"User with id: '{user.Id}', not found");
+        
+        var updated = mapper.Map(user, entity);
+        await applicationContext.SaveChangesAsync(cancellationToken);
+    }
 }

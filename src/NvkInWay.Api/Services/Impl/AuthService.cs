@@ -1,10 +1,13 @@
 using System.Security.Claims;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using NvkInWay.Api.Domain;
 using NvkInWay.Api.Exceptions;
 using NvkInWay.Api.Persistence.Repositories;
+using NvkInWay.Api.Settings;
 using NvkInWay.Api.Utils;
+using NvkInWay.Api.Utils.Impl;
 
 namespace NvkInWay.Api.Services.Impl;
 
@@ -13,7 +16,10 @@ internal sealed class AuthService : IAuthService
     private readonly IUserRepository userRepository;
     private readonly IRefreshTokenRepository refreshTokenRepository;
     private readonly IUserSessionRepository userSessionRepository;
+    private readonly IUserVerificationRepository userVerificationRepository;
     private readonly IJwtService jwtService;
+    private readonly IEmailSender emailSender;
+    private readonly IOptions<EmailVerificationOptions> emailVerificationOptions;
     private readonly ILogger<AuthService> logger;
     private readonly IPasswordHasher passwordHasher;
 
@@ -21,14 +27,20 @@ internal sealed class AuthService : IAuthService
         IUserRepository userRepository,
         IRefreshTokenRepository refreshTokenRepository,
         IUserSessionRepository userSessionRepository,
+        IUserVerificationRepository userVerificationRepository,
         IJwtService jwtService,
+        IEmailSender emailSender,
+        IOptions<EmailVerificationOptions> emailVerificationOptions,
         ILogger<AuthService> logger,
         IPasswordHasher passwordHasher)
     {
         this.userRepository = userRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.userSessionRepository = userSessionRepository;
+        this.userVerificationRepository = userVerificationRepository;
         this.jwtService = jwtService;
+        this.emailSender = emailSender;
+        this.emailVerificationOptions = emailVerificationOptions;
         this.logger = logger;
         this.passwordHasher = passwordHasher;
     }
@@ -45,11 +57,6 @@ internal sealed class AuthService : IAuthService
         try
         {
             var user = await userRepository.GetByEmailAsync(email);
-            if (user == null)
-            {
-                logger.LogWarning("Login attempt with non-existent email: {Email}", email);
-                throw new UnauthorizedException("Invalid credentials");
-            }
 
             if (user.IsBlocked)
             {
@@ -129,11 +136,6 @@ internal sealed class AuthService : IAuthService
             }
 
             var user = await userRepository.GetUserByIdAsync(userId);
-            if (user == null)
-            {
-                logger.LogWarning("User not found during token refresh: {UserId}", userId);
-                throw new SecurityTokenException("User not found");
-            }
 
             if (user.IsBlocked || user.IsDeleted)
             {
@@ -270,5 +272,86 @@ internal sealed class AuthService : IAuthService
             logger.LogWarning(ex, "Error validating refresh token for user {UserId}", userId);
             return false;
         }
+    }
+
+    public async Task<bool> SendUniqueVerificationCodeAsync(string email,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await userRepository.GetByEmailAsync(email, cancellationToken);
+        
+        var lastCreatedAt = await userVerificationRepository.GetLastCreatedAtAsync(user.Id, cancellationToken);
+        lastCreatedAt ??= DateTimeOffset.MinValue;
+        
+        var timePassed = DateTimeOffset.UtcNow - lastCreatedAt;
+        
+        var start = DateTimeOffset.UtcNow - emailVerificationOptions.Value.RecreateTimeout;
+        var verificationsCount = await userVerificationRepository
+            .CountCreatedVerificationsInPeriodAsync(user.Id, start, DateTimeOffset.UtcNow, cancellationToken);
+
+        var isMaxCountExceeded = verificationsCount >= emailVerificationOptions.Value.MaxCreatedVerificationCount;
+        var isWaitingTimePassed = timePassed > emailVerificationOptions.Value.RecreateTimeout;
+
+        if (isMaxCountExceeded && !isWaitingTimePassed)
+        {
+            var timeToWait = emailVerificationOptions.Value.RecreateTimeout - timePassed;
+            
+            logger.LogWarning("User '{UserId}' max cound exceed and waiting time not passed", user.Id);
+            throw new TooManyAttemptsException($"You must wait for {timeToWait} seconds before you try to change email again.");
+        }
+
+        var verificationCode = await CreateUniqueInviteCodeAsync(user.Id,  cancellationToken);
+        var expiresAt = DateTimeOffset.UtcNow + emailVerificationOptions.Value.CodeExpiration;
+
+        string relativePath = Path.Combine("Resources",
+            "EmailTemplates/Email_GetInviteCode.html");
+
+        await using var stream = File.OpenRead(relativePath);
+
+        var emailBody = await new StreamReader(stream).ReadToEndAsync(cancellationToken);
+        emailBody = emailBody.Replace("{{APP_NAME}}", emailVerificationOptions.Value.AppName);
+        emailBody = emailBody.Replace("{{UNIQUE_LOGIN_CODE}}",
+            verificationCode);
+
+        var sendingResult = await emailSender.SendAsync(user.Email, "Подтверждение кода входа", emailBody);
+        
+        if(sendingResult == false)
+            throw new ApplicationException("Email sending failed");
+        
+        await userVerificationRepository
+            .CreateNewVerificationCodeAsync(user, expiresAt, verificationCode, cancellationToken);
+        
+        logger.LogInformation("Sent verification code for user {UserId}", user.Id);
+        return sendingResult;
+    }
+
+    public async Task ConfirmEmailAsync(string email, string code)
+    {
+        var user = await userRepository.GetByEmailAsync(email);
+
+        if (await userVerificationRepository
+                .VerificationPassedCheckAsync(user.Id, code, emailVerificationOptions.Value.VerificationTimeout))
+        {
+            user.IsVerified = true;
+            await userVerificationRepository.SetUsersCodesNotActualAsync(user.Id);
+        }
+
+        user.IsVerified = true;
+        await userRepository.UpdateUserAsync(user);
+        
+        logger.LogInformation("Confirmed email for user {UserId}", user.Id);
+    }
+
+    private async Task<string> CreateUniqueInviteCodeAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        var inviteCode = RandomStringGenerator.GenerateRandomString(
+            emailVerificationOptions.Value.VerificationCodeLength);
+
+        while (await userVerificationRepository.ActualVerificationCodeExistsAsync(userId, inviteCode, cancellationToken))
+        {
+            inviteCode = RandomStringGenerator.GenerateRandomString(
+                emailVerificationOptions.Value.VerificationCodeLength);
+        }
+
+        return inviteCode;
     }
 }

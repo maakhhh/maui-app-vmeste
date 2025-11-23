@@ -12,4 +12,8 @@ public interface IAuthService
     Task<IEnumerable<UserSession>> GetUserSessionsAsync(int userId);
     Task RevokeSessionAsync(int userId, string deviceId);
     Task<bool> IsValidRefreshTokenAsync(string refreshToken, int userId, string deviceId);
+
+    public Task<bool> SendUniqueVerificationCodeAsync(string email, CancellationToken cancellationToken = default);
+
+    public Task ConfirmEmailAsync(string email, string code);
 }

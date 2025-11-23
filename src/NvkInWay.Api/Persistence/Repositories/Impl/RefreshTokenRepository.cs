@@ -51,7 +51,7 @@ internal sealed class RefreshTokenRepository(ApplicationContext context, IMapper
                     rt.JwtId == jwtId && 
                     !rt.IsUsed && 
                     !rt.IsRevoked && 
-                    rt.ExpiryDate > DateTimeOffset.Now);
+                    rt.ExpiryDate > DateTimeOffset.UtcNow);
 
             return entity != null ? mapper.Map<RefreshToken>(entity) : null;
         }

@@ -9,6 +9,8 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
     public DbSet<UserSessionsEntity> UserSessions => Set<UserSessionsEntity>();
     public DbSet<RevokedTokenEntity> RevokedTokens => Set<RevokedTokenEntity>();
+    public DbSet<UserVerificationEntity> Verifications => Set<UserVerificationEntity>();
+    
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<DriveEntity> Drives => Set<DriveEntity>();
     
@@ -38,6 +40,9 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
         modelBuilder.Entity<UserSessionsEntity>(entity =>
         {
             entity.HasKey(us => us.Id);
+            entity.Property(us => us.Id)
+                .ValueGeneratedOnAdd();
+            
             entity.HasIndex(us => new { us.UserId, us.DeviceId }).IsUnique();
             entity.HasIndex(us => us.LastActivity);
             
@@ -90,6 +95,21 @@ internal sealed class ApplicationContext : Microsoft.EntityFrameworkCore.DbConte
 
             entity.HasMany(d => d.Passengers)
                 .WithMany();
+        });
+
+        modelBuilder.Entity<UserVerificationEntity>(entity =>
+        {
+            entity.HasKey(u => u.Id);
+
+            entity.Property(v => v.UnconfirmedEmail).HasMaxLength(100);
+            entity.Property(v => v.UnconfirmedEmailCode).HasMaxLength(10);
+            entity.Property(v => v.VerificationCode).HasMaxLength(10);
+
+            entity.HasOne(v => v.User)
+                .WithMany();
+            
+            entity.HasIndex(v => new { v.UnconfirmedEmailCode, UnconfirmedEmailCodeExpirationAt = v.VerificationCodeExpiredAt });
+            entity.HasIndex(v => new { v.UserId, UnconfirmedEmailCodeCreatedAt = v.VerificationCodeCreatedAt });
         });
     }
 }

@@ -141,7 +141,7 @@ internal sealed class UserSessionRepository(ApplicationContext context,
         }
     }
 
-    public async Task<IEnumerable<UserSession>> GetActiveSessionsAsync(long userId)
+    public async Task<IReadOnlyCollection<UserSession>> GetActiveSessionsAsync(long userId)
     {
         try
         {
@@ -150,7 +150,7 @@ internal sealed class UserSessionRepository(ApplicationContext context,
                 .OrderByDescending(us => us.LastActivity)
                 .ToListAsync();
 
-            return sessions.Select(mapper.Map<UserSession>);
+            return sessions.Select(mapper.Map<UserSession>).ToList();
         }
         catch (Exception ex)
         {

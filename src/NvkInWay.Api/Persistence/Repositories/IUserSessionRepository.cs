@@ -8,7 +8,7 @@ public interface IUserSessionRepository
     Task UpdateLastActivityAsync(long userId, string deviceId);
     Task<UserSession?> DeactivateAsync(long userId, string deviceId);
     Task<int> DeactivateAllAsync(long userId);
-    Task<IEnumerable<UserSession>> GetActiveSessionsAsync(long userId);
+    Task<IReadOnlyCollection<UserSession>> GetActiveSessionsAsync(long userId);
     Task<UserSession?> GetByDeviceIdAsync(long userId, string deviceId);
     Task<bool> UpdatePushTokenAsync(long userId, string deviceId, string pushToken);
     Task<int> DeleteExpiredAsync(TimeSpan expirationTime);

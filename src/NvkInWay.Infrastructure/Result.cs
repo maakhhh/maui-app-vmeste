@@ -4,7 +4,6 @@ using JetBrains.Annotations;
 namespace NvkInWay.Infrastructure;
 
 public readonly struct Result<TValue, TError>
-    where TValue : class
     where TError : ResultError
 {
     private readonly TValue? value;
@@ -28,7 +27,7 @@ public readonly struct Result<TValue, TError>
     {
         ArgumentNullException.ThrowIfNull(error);
 
-        return new Result<TValue, TError>(null, error);
+        return new Result<TValue, TError>(default, error);
     }
 
     [MemberNotNullWhen(true, "value")]
@@ -110,7 +109,7 @@ public readonly struct Result<TValue, TError>
 
     public TValue? ValueOrDefault()
     {
-        return Match<TValue>(v => v!, _ => null);
+        return Match<TValue>(v => v!, _ => default!);
     }
 
     public TValue ValueOrThrow()

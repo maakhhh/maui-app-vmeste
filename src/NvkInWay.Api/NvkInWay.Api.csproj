@@ -27,6 +27,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\NvkInWay.Infrastructure\NvkInWay.Infrastructure.csproj" />
       <ProjectReference Include="..\NvkInWay.MediatR\NvkInWay.MediatR.csproj" />
     </ItemGroup>
 

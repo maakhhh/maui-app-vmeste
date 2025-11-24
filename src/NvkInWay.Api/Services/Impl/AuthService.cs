@@ -60,13 +60,13 @@ internal sealed class AuthService : IAuthService
 
             if (user.IsBlocked)
             {
-                logger.LogWarning("Login attempt for blocked user: {UserId}", user.Id);
+                logger.LogWarning("Login attempt for blocked user: '{UserId}'", user.Id);
                 throw new UnauthorizedException("Account is blocked");
             }
 
             if (!passwordHasher.VerifyPassword(password, user.HashedPassword))
             {
-                logger.LogWarning("Invalid password for user: {UserId}", user.Id);
+                logger.LogWarning("Invalid password for user: '{UserId}'", user.Id);
                 throw new UnauthorizedException("Invalid credentials");
             }
 
@@ -87,13 +87,13 @@ internal sealed class AuthService : IAuthService
             await refreshTokenRepository.AddAsync(refreshToken);
             await userSessionRepository.UpdateLastActivityAsync(user.Id, deviceId);
             
-            logger.LogInformation("User {UserId} successfully logged in from device {DeviceId}", user.Id, deviceId);
+            logger.LogInformation("User '{UserId}' successfully logged in from device '{DeviceId}'", user.Id, deviceId);
 
             return tokens;
         }
         catch (Exception ex) when (ex is not UnauthorizedException)
         {
-            logger.LogError(ex, "Error during login for email: {Email}", email);
+            logger.LogError(ex, "Error during login for email: '{Email}'", email);
             throw new UnauthorizedException("Login failed");
         }
     }
@@ -131,7 +131,7 @@ internal sealed class AuthService : IAuthService
 
             if (storedRefreshToken == null)
             {
-                logger.LogWarning("Invalid refresh token for user {UserId}, device {DeviceId}", userId, deviceId);
+                logger.LogWarning("Invalid refresh token for user '{UserId}', device '{DeviceId}'", userId, deviceId);
                 throw new SecurityTokenException("Invalid refresh token");
             }
 
@@ -139,7 +139,7 @@ internal sealed class AuthService : IAuthService
 
             if (user.IsBlocked || user.IsDeleted)
             {
-                logger.LogWarning("Inactive user attempted token refresh: {UserId}", userId);
+                logger.LogWarning("Inactive user attempted token refresh: '{UserId}'", userId);
                 throw new SecurityTokenException("User account is deactivated");
             }
 
@@ -152,7 +152,8 @@ internal sealed class AuthService : IAuthService
             {
                 UserId = userId,
                 Token = newTokens.RefreshToken,
-                JwtId = jwtService.GetJwtId(newTokens.AccessToken) ?? throw new InvalidOperationException("Failed to get JWT ID from new token"),
+                JwtId = jwtService.GetJwtId(newTokens.AccessToken) 
+                        ?? throw new InvalidOperationException("Failed to get JWT ID from new token"),
                 DeviceId = deviceId,
                 CreatedAt = DateTime.UtcNow,
                 ExpiryDate = newTokens.RefreshTokenExpiry
@@ -162,13 +163,13 @@ internal sealed class AuthService : IAuthService
 
             await userSessionRepository.UpdateLastActivityAsync(userId, deviceId);
 
-            logger.LogInformation("Tokens refreshed for user {UserId}, device {DeviceId}", userId, deviceId);
+            logger.LogInformation("Tokens refreshed for user '{UserId}', device '{DeviceId}'", userId, deviceId);
 
             return newTokens;
         }
         catch (Exception ex) when (ex is not SecurityTokenException)
         {
-            logger.LogError(ex, "Error during token refresh for device: {DeviceId}", deviceId);
+            logger.LogError(ex, "Error during token refresh for device: '{DeviceId}'", deviceId);
             throw new SecurityTokenException("Token refresh failed");
         }
     }
@@ -185,12 +186,12 @@ internal sealed class AuthService : IAuthService
             _ = await userSessionRepository.DeactivateAsync(userId, deviceId);
 
             logger.LogInformation(
-                "User {UserId} logged out from device {DeviceId}. Revoked {TokenCount} refresh tokens", 
+                "User '{UserId}' logged out from device '{DeviceId}'. Revoked '{TokenCount}' refresh tokens", 
                 userId, deviceId, revokedCount);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error during logout for user {UserId}, device {DeviceId}", userId, deviceId);
+            logger.LogError(ex, "Error during logout for user '{UserId}', device '{DeviceId}'", userId, deviceId);
             throw;
         }
     }
@@ -203,12 +204,12 @@ internal sealed class AuthService : IAuthService
 
             var deactivatedCount = await userSessionRepository.DeactivateAllAsync(userId);
             logger.LogInformation(
-                "User {UserId} logged out from all devices. Revoked {TokenCount} tokens, deactivated {SessionCount} sessions", 
-                userId, revokedCount, deactivatedCount);
+                "User '{UserId}' logged out from all devices. Revoked '{TokenCount}' tokens," +
+                " deactivated '{SessionCount}' sessions", userId, revokedCount, deactivatedCount);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error during logout from all devices for user {UserId}", userId);
+            logger.LogError(ex, "Error during logout from all devices for user '{UserId}'", userId);
             throw;
         }
     }
@@ -229,7 +230,7 @@ internal sealed class AuthService : IAuthService
         }
     }
 
-    public async Task<IEnumerable<UserSession>> GetUserSessionsAsync(int userId)
+    public async Task<IReadOnlyCollection<UserSession>> GetUserSessionsAsync(int userId)
     {
         var sessions = await userSessionRepository.GetActiveSessionsAsync(userId);
         return sessions;
@@ -247,12 +248,13 @@ internal sealed class AuthService : IAuthService
             await userSessionRepository.DeactivateAsync(userId, deviceId);
 
             logger.LogInformation(
-                "Session revoked for user {UserId}, device {DeviceId}. Revoked {TokenCount} tokens", 
+                "Session revoked for user '{UserId}', device '{DeviceId}'. Revoked '{TokenCount}' tokens", 
                 userId, deviceId, revokedCount);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error revoking session for user {UserId}, device {DeviceId}", userId, deviceId);
+            logger.LogError(ex, "Error revoking session for user '{UserId}', " +
+                                "device '{DeviceId}'", userId, deviceId);
             throw;
         }
     }
@@ -269,7 +271,7 @@ internal sealed class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Error validating refresh token for user {UserId}", userId);
+            logger.LogWarning(ex, "Error validating refresh token for user '{UserId}'", userId);
             return false;
         }
     }
@@ -321,7 +323,7 @@ internal sealed class AuthService : IAuthService
         await userVerificationRepository
             .CreateNewVerificationCodeAsync(user, expiresAt, verificationCode, cancellationToken);
         
-        logger.LogInformation("Sent verification code for user {UserId}", user.Id);
+        logger.LogInformation("Sent verification code for user '{UserId}'", user.Id);
         return sendingResult;
     }
 
@@ -339,7 +341,7 @@ internal sealed class AuthService : IAuthService
         user.IsVerified = true;
         await userRepository.UpdateUserAsync(user);
         
-        logger.LogInformation("Confirmed email for user {UserId}", user.Id);
+        logger.LogInformation("Confirmed email for user '{UserId}'", user.Id);
     }
 
     private async Task<string> CreateUniqueInviteCodeAsync(long userId, CancellationToken cancellationToken = default)

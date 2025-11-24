@@ -1,4 +1,5 @@
 using NvkInWay.Api.Domain;
+using NvkInWay.Infrastructure;
 
 namespace NvkInWay.Api.Services;
 
@@ -9,7 +10,7 @@ public interface IAuthService
     Task LogoutAsync(int userId, string deviceId);
     Task LogoutAllDevicesAsync(int userId);
     Task<bool> ValidateAccessTokenAsync(string accessToken);
-    Task<IEnumerable<UserSession>> GetUserSessionsAsync(int userId);
+    Task<IReadOnlyCollection<UserSession>> GetUserSessionsAsync(int userId);
     Task RevokeSessionAsync(int userId, string deviceId);
     Task<bool> IsValidRefreshTokenAsync(string refreshToken, int userId, string deviceId);
 

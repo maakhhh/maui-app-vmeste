@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using NvkInWay.Api.Domain;
 using NvkInWay.Api.Exceptions;
 using NvkInWay.Api.Persistence.DbContext;
 using NvkInWay.Api.Persistence.Entities;
 using NvkInWay.Api.Utils;
+using NvkInWay.Infrastructure;
 
 namespace NvkInWay.Api.Persistence.Repositories.Impl;
 
@@ -47,7 +49,7 @@ internal sealed class UserVerificationRepository(ApplicationContext applicationC
         return entity != null;
     }
 
-    public async Task<bool> VerificationPassedCheckAsync(long userId, string code, TimeSpan verificationTimeout,
+    public async Task<Result<bool, ResultError>> VerificationPassedCheckAsync(long userId, string code, TimeSpan verificationTimeout,
         CancellationToken cancellationToken = default)
     {
         var actualVerificationEntity = await applicationContext.Verifications
@@ -57,7 +59,8 @@ internal sealed class UserVerificationRepository(ApplicationContext applicationC
             .OrderByDescending(x => x.VerificationCodeCreatedAt)
             .SingleOrDefaultAsync(cancellationToken);
         
-        if(actualVerificationEntity == null) return false;
+        if(actualVerificationEntity == null) 
+            return new ResultError("confirm:not-actual", "Verification code is not actual");
         
         var lastAttemptSecondPassed = DateTimeOffset.UtcNow - actualVerificationEntity.LastVerificationAt;
         if(lastAttemptSecondPassed < verificationTimeout)

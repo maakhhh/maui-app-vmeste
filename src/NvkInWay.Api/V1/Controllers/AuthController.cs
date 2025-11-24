@@ -18,7 +18,18 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
     [HttpPost("confirm-email")]
     public async Task<ActionResult> ConfirmEmail([FromBody] V1ConfirmEmailRequest request)
     {
-        await authService.ConfirmEmailAsync(request.Email, request.ConfirmationCode);
+        var result = await authService.ConfirmEmailAsync(request.Email, request.ConfirmationCode);
+
+        if (result.HasError)
+        {
+            var error = result.ErrorOrDefault()!;
+            
+            return BadRequest(new ErrorResponse()
+            {
+                Error = error.Id,
+                Message = error.Message
+            });
+        }
         
         return NoContent();
     }

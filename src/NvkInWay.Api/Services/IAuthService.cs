@@ -1,3 +1,4 @@
+using MediatR;
 using NvkInWay.Api.Domain;
 using NvkInWay.Infrastructure;
 
@@ -16,5 +17,5 @@ public interface IAuthService
 
     public Task<bool> SendUniqueVerificationCodeAsync(string email, CancellationToken cancellationToken = default);
 
-    public Task ConfirmEmailAsync(string email, string code);
+    public Task<Result<Unit, ResultError>> ConfirmEmailAsync(string email, string code);
 }

@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Security.Claims;
+using MediatR;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -8,6 +10,7 @@ using NvkInWay.Api.Persistence.Repositories;
 using NvkInWay.Api.Settings;
 using NvkInWay.Api.Utils;
 using NvkInWay.Api.Utils.Impl;
+using NvkInWay.Infrastructure;
 
 namespace NvkInWay.Api.Services.Impl;
 
@@ -327,14 +330,15 @@ internal sealed class AuthService : IAuthService
         return sendingResult;
     }
 
-    public async Task ConfirmEmailAsync(string email, string code)
+    public async Task<Result<Unit, ResultError>> ConfirmEmailAsync(string email, string code)
     {
         var user = await userRepository.GetByEmailAsync(email);
+        var result = await userVerificationRepository
+            .VerificationPassedCheckAsync(user.Id, code, emailVerificationOptions.Value.VerificationTimeout);
 
-        if (!await userVerificationRepository
-                .VerificationPassedCheckAsync(user.Id, code, emailVerificationOptions.Value.VerificationTimeout))
+        if (result.HasError)
         {
-            throw new ApplicationException("Email not verified");
+            return result.ErrorOrDefault()!;
         }
         
         await userVerificationRepository.SetUsersCodesNotActualAsync(user.Id);
@@ -342,6 +346,8 @@ internal sealed class AuthService : IAuthService
         await userRepository.UpdateUserAsync(user);
         
         logger.LogInformation("Confirmed email for user '{UserId}'", user.Id);
+        
+        return Unit.Value;
     }
 
     private async Task<string> CreateUniqueInviteCodeAsync(long userId, CancellationToken cancellationToken = default)

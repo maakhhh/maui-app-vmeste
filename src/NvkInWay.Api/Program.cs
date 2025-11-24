@@ -6,6 +6,7 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using NvkInWay.Api.Authorization;
+using NvkInWay.Api.Filters;
 using NvkInWay.Api.Persistence;
 using NvkInWay.Api.Persistence.DbContext;
 using NvkInWay.Api.Persistence.Repositories;
@@ -105,7 +106,10 @@ builder.Services.AddDbContext<ApplicationContext>(options =>
 builder.Services.AddAutoMapper(cfg => cfg
     .AddProfiles([new MappingProfile(), new DtoMappingProfile()]));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    options.Filters.Add<CustomExceptionFilter>();
+});
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

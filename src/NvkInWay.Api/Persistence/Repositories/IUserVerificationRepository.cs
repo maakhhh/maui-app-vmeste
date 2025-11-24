@@ -1,4 +1,5 @@
 using NvkInWay.Api.Domain;
+using NvkInWay.Infrastructure;
 
 namespace NvkInWay.Api.Persistence.Repositories;
 
@@ -16,6 +17,6 @@ public interface IUserVerificationRepository
     
     public Task SetUsersCodesNotActualAsync(long userId, CancellationToken cancellationToken = default);
 
-    public Task<bool> VerificationPassedCheckAsync(long userId, string code, TimeSpan verificationTimeout,
+    public Task<Result<bool, ResultError>> VerificationPassedCheckAsync(long userId, string code, TimeSpan verificationTimeout,
         CancellationToken cancellationToken = default);
 }

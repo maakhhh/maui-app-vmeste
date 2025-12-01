@@ -12,14 +12,25 @@ public class AuthHelper : IAuthHelper
         if (controller == null)
             throw new ArgumentNullException(nameof(controller));
 
-        var identity = controller.HttpContext.User.Identity as ClaimsIdentity;
-
-        if (identity == null)
+        var user = controller.HttpContext.User;
+        
+        if (user.Identity == null || !user.Identity.IsAuthenticated)
             throw new UnauthorizedException("User is not authenticated");
 
-        var nameClaim = identity.FindFirst(JwtRegisteredClaimNames.Sub);
-        if (nameClaim == null) throw new ApplicationException("Cannot get claim 'Name'.");
+        var userIdClaim = user.FindFirst(ClaimTypes.NameIdentifier) ?? 
+                         user.FindFirst(JwtRegisteredClaimNames.Sub) ??
+                         user.FindFirst("sub");
 
-        return long.Parse(nameClaim.Value);
+        if (userIdClaim == null || string.IsNullOrEmpty(userIdClaim.Value))
+        {
+            throw new ApplicationException("Cannot get user ID from token claims.");
+        }
+
+        if (long.TryParse(userIdClaim.Value, out var userId))
+        {
+            return userId;
+        }
+
+        throw new ApplicationException($"Invalid user ID format: {userIdClaim.Value}");
     }
 }

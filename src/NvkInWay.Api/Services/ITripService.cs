@@ -14,4 +14,6 @@ public interface ITripService
     Task<Trip> UpdateTrip(long tripId, User user, V1CreateTripDto tripRequest);
     
     Task DeleteTrip(long tripId, User user);
+
+    Task<List<Trip>> GetTrips(DateTimeOffset date);
 }

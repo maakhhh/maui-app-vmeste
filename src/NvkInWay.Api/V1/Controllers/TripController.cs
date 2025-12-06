@@ -67,6 +67,13 @@ public class TripController(IAuthHelper authHelper, ITripService tripService, IU
         return NoContent();
     }
 
+    [Authorize]
+    [HttpGet("")]
+    public async Task<ActionResult<List<V1TripDto>>> GetTrips([FromQuery] DateTimeOffset date)
+    {
+        return mapper.Map<List<V1TripDto>>(await tripService.GetTrips(date));
+    }
+
     private async Task<User> GetCurrentUser()
     {
         var userId = authHelper.GetUserId(this);

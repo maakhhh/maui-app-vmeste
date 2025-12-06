@@ -83,4 +83,10 @@ internal sealed class TripService(
         trip.UpdatedAt = DateTimeOffset.Now;
         await tripRepository.UpdateTripAsync(trip);
     }
+
+    public async Task<List<Trip>> GetTrips(DateTimeOffset date)
+    {
+        var trips = await tripRepository.GetAllTripsAsync();
+        return trips.Where(t => t.CreatedAt == date && !t.IsDeleted).ToList();
+    }
 }
